@@ -44,18 +44,28 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onBack 
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
+
+      if (video.readyState !== 4) {
+        console.error("Video not ready");
+        return;
+      }
+
       // Match canvas size to video size
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      
+
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // Get Base64 image
-        // Removing prefix data:image/jpeg;base64, for Gemini API usually requires just the data or careful handling
-        // But for display we keep it, for Gemini we strip it later
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+        if (dataUrl.length < 100) {
+          console.error("Capture failed: dataUrl too short");
+          setError("Ошибка захвата камеры. Попробуйте еще раз.");
+          return;
+        }
+
+        console.log(`Captured photo: ${canvas.width}x${canvas.height}, size: ${dataUrl.length}`);
         stopCamera();
         onCapture(dataUrl);
       }
@@ -82,23 +92,23 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onBack 
         />
         {/* Overlay guides */}
         <div className="absolute inset-0 pointer-events-none border-[1px] border-white/20 grid grid-cols-3 grid-rows-3">
-            <div className="border-r border-b border-white/20"></div>
-            <div className="border-r border-b border-white/20"></div>
-            <div className="border-b border-white/20"></div>
-            <div className="border-r border-b border-white/20"></div>
-            <div className="border-r border-b border-white/20"></div>
-            <div className="border-b border-white/20"></div>
-            <div className="border-r border-white/20"></div>
-            <div className="border-r border-white/20"></div>
-            <div></div>
+          <div className="border-r border-b border-white/20"></div>
+          <div className="border-r border-b border-white/20"></div>
+          <div className="border-b border-white/20"></div>
+          <div className="border-r border-b border-white/20"></div>
+          <div className="border-r border-b border-white/20"></div>
+          <div className="border-b border-white/20"></div>
+          <div className="border-r border-white/20"></div>
+          <div className="border-r border-white/20"></div>
+          <div></div>
         </div>
       </div>
 
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Controls */}
-      <div className="h-32 bg-black/50 backdrop-blur-sm flex items-center justify-between px-8 pb-4">
-        <button 
+      <div className="h-48 bg-black/50 backdrop-blur-sm flex items-center justify-between px-8 pb-20">
+        <button
           onClick={onBack}
           className="text-white text-sm font-medium p-4"
         >
@@ -110,7 +120,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onBack 
           className="w-16 h-16 rounded-full bg-white border-4 border-gray-300 shadow-lg transform active:scale-95 transition-transform"
           aria-label="Сделать фото"
         ></button>
-        
+
         <div className="w-12"></div> {/* Spacer for symmetry */}
       </div>
     </div>

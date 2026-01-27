@@ -1,49 +1,48 @@
 <!DOCTYPE html>
 <html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>УРОКИСАМИ</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            animation: {
-              'fade-in': 'fadeIn 0.5s ease-out forwards',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: '0', transform: 'translateY(10px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              }
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>УРОКИСАМИ</title>
+
+  <!-- WebSocket Proxy Interceptor - MUST load FIRST, before ANY other scripts -->
+
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out forwards',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
             }
           }
         }
       }
-    </script>
-    <style>
-      /* Custom scrollbar hide for cleaner UI */
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0"
-  }
-}
-</script>
+    }
+  </script>
+  <style>
+    /* Custom scrollbar hide for cleaner UI */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
 </head>
-  <body class="bg-gray-50 text-gray-900 overflow-hidden fixed w-full h-full">
-    <div id="root" class="w-full h-full"></div>
-  </body>
+
+<body class="bg-gray-50 text-gray-900 overflow-hidden fixed w-full h-full">
+  <div id="root" class="w-full h-full"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
 </html>

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  urokisami:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GEMINI_API_KEY: ${GEMINI_API_KEY}
+    container_name: urokisami
+    restart: unless-stopped
+    ports:
+      - "3030:3005"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PROXY_URL=${PROXY_URL}
+      - NODE_ENV=production
+    networks:
+      - urokisami_network
+
+networks:
+  urokisami_network:
+    driver: bridge

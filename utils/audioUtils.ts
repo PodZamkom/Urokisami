@@ -1,20 +1,49 @@
-import { Blob } from '@google/genai';
+export interface AudioBlob {
+  data: string;
+  mimeType: string;
+}
 
 /**
  * Converts Float32Array audio data to 16-bit PCM Blob formatted for Gemini.
+ * Includes downsampling if input rate > 16000Hz.
  */
-export function createPcmBlob(data: Float32Array): Blob {
-  const l = data.length;
+export function createPcmBlob(data: Float32Array, sampleRate: number): AudioBlob {
+  let audioData = data;
+  const targetRate = 16000;
+
+  if (sampleRate > targetRate) {
+    audioData = downsampleBuffer(data, sampleRate, targetRate);
+  }
+
+  const l = audioData.length;
   const int16 = new Int16Array(l);
   for (let i = 0; i < l; i++) {
     // Clamp values to [-1, 1] before scaling
-    const s = Math.max(-1, Math.min(1, data[i]));
+    const s = Math.max(-1, Math.min(1, audioData[i]));
     int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
   }
   return {
     data: base64Encode(new Uint8Array(int16.buffer)),
     mimeType: 'audio/pcm;rate=16000',
   };
+}
+
+function downsampleBuffer(buffer: Float32Array, inputRate: number, outputRate: number): Float32Array {
+  if (inputRate === outputRate) return buffer;
+  const ratio = inputRate / outputRate;
+  const newLength = Math.round(buffer.length / ratio);
+  const result = new Float32Array(newLength);
+
+  for (let i = 0; i < newLength; i++) {
+    const index = i * ratio;
+    const intIndex = Math.floor(index);
+    const frac = index - intIndex;
+    // Linear interpolation
+    const a = buffer[intIndex];
+    const b = buffer[intIndex + 1] || a;
+    result[i] = a + (b - a) * frac;
+  }
+  return result;
 }
 
 /**
@@ -53,7 +82,7 @@ export async function decodeAudioData(
 ): Promise<AudioBuffer> {
   const bytes = base64Decode(base64Data);
   const dataInt16 = new Int16Array(bytes.buffer);
-  
+
   // Create an AudioBuffer
   // frameCount is total samples / channels
   const frameCount = dataInt16.length / numChannels;
