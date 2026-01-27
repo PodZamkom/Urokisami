@@ -41,11 +41,13 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
   const outputTranscriptBuffer = useRef<string>('');
   const statusRef = useRef<string>('initializing');
   const nextStartTimeRef = useRef<number>(0);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   // State
   const [logs, setLogs] = useState<string[]>([]);
   const [statusVal, setStatusVal] = useState<string>('initializing');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [volume, setVolume] = useState<number>(1.0);
 
   // Status Sync Wrapper
   const setStatus = (s: string) => {
@@ -157,6 +159,13 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
       outputAnalyser.fftSize = 256;
       outputAnalyserRef.current = outputAnalyser;
 
+      const gainNode = outputCtx.createGain();
+      gainNode.gain.value = 1.0; // Default volume (will be updated by state effect if needed, but refs are better here)
+      gainNodeRef.current = gainNode;
+      // Connect: Gain -> Analyser -> Destination
+      gainNode.connect(outputAnalyser);
+      outputAnalyser.connect(outputCtx.destination);
+
       log("Requesting microphone access...");
       // FIX RACE CONDITION
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -250,8 +259,13 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
               const audioBuffer = await decodeAudioData(base64Audio, ctx);
               const source = ctx.createBufferSource();
               source.buffer = audioBuffer;
-              source.connect(outputAnalyserRef.current || ctx.destination);
-              if (outputAnalyserRef.current) outputAnalyserRef.current.connect(ctx.destination);
+
+              if (gainNodeRef.current) {
+                source.connect(gainNodeRef.current);
+              } else {
+                source.connect(outputAnalyserRef.current || ctx.destination);
+              }
+
               source.start(nextStartTimeRef.current);
               nextStartTimeRef.current += audioBuffer.duration;
               sourcesRef.current.add(source);
@@ -377,7 +391,29 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
         )}
       </div>
 
-      <div className="flex-none p-10 pb-20 bg-white border-t border-gray-50 text-center">
+      <div className="flex-none p-10 pb-20 bg-white border-t border-gray-50 text-center space-y-6">
+        <div className="max-w-xs mx-auto w-full px-4 flex items-center gap-4">
+          {/* Volume Controls */}
+          <span className="text-xl">🔈</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={volume}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setVolume(v);
+              if (gainNodeRef.current) {
+                gainNodeRef.current.gain.value = v;
+                // Smooth transition could be added: .setTargetAtTime(v, ctx.currentTime, 0.1)
+              }
+            }}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+          />
+          <span className="text-xl">🔊</span>
+        </div>
+
         <button onClick={handleEndSession} className="group flex flex-col items-center mx-auto space-y-2">
           <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 group-hover:bg-red-50 group-hover:text-red-500 transition-all">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
