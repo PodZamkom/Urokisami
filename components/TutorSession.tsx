@@ -86,7 +86,12 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
     }
 
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch (e) { }
+      });
       mediaStreamRef.current = null;
     }
   };
