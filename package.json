@@ -1,7 +1,7 @@
 {
   "name": "урокисами",
   "private": true,
-  "version": "1.23.0",
+  "version": "1.25.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   "dependencies": {
     "@google/genai": "^1.38.0",
     "events": "^3.3.0",
+    "mongoose": "^8.9.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "socks-proxy-agent": "^8.0.5",

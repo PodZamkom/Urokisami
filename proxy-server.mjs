@@ -5,9 +5,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { SocksProxyAgent } from 'socks-proxy-agent';
+import mongoose from 'mongoose';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
 function fileLog(msg) {
     const ts = new Date().toISOString();
     try {
@@ -19,6 +21,7 @@ function fileLog(msg) {
 }
 
 const PROXY_URL = process.env.PROXY_URL;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/urokisami';
 const PORT = 3005;
 
 if (!PROXY_URL) {
@@ -26,10 +29,52 @@ if (!PROXY_URL) {
     process.exit(1);
 }
 
+// MongoDB Connection
+mongoose.connect(MONGODB_URI)
+    .then(() => fileLog('Connected to MongoDB'))
+    .catch(err => fileLog('MongoDB connection error: ' + err));
+
+const SessionSchema = new mongoose.Schema({
+    id: { type: String, index: true },
+    username: String,
+    contact: String,
+    startTime: Date,
+    endTime: Date,
+    image: String,
+    logs: [{
+        timestamp: Date,
+        sender: String,
+        text: String
+    }],
+    events: [{
+        timestamp: Date,
+        type: String, // 'action' | 'error'
+        content: String
+    }]
+});
+
+const Session = mongoose.model('Session', SessionSchema);
+
 const agent = new SocksProxyAgent(PROXY_URL);
 
 fileLog(`Starting proxy server on port ${PORT}...`);
 fileLog(`Using Proxy: ${PROXY_URL}`);
+
+// Helper to parse JSON body
+function getJsonBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', () => {
+            try {
+                resolve(JSON.parse(body));
+            } catch (e) {
+                reject(e);
+            }
+        });
+        req.on('error', reject);
+    });
+}
 
 // Helper to serve static files
 const mimeTypes = {
@@ -94,7 +139,75 @@ function serveStatic(req, res) {
     });
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
+    // API Endpoints
+    if (req.url.startsWith('/api/')) {
+        res.setHeader('Content-Type', 'application/json');
+
+        try {
+            if (req.url === '/api/sessions/start' && req.method === 'POST') {
+                const data = await getJsonBody(req);
+                const session = new Session({
+                    id: data.id,
+                    username: data.username,
+                    contact: data.contact,
+                    startTime: new Date(data.startTime),
+                    logs: [],
+                    events: []
+                });
+                await session.save();
+                return res.end(JSON.stringify({ success: true }));
+            }
+
+            if (req.url.startsWith('/api/sessions/') && req.url.endsWith('/log') && req.method === 'POST') {
+                const id = req.url.split('/')[3];
+                const data = await getJsonBody(req);
+                await Session.updateOne({ id }, { $push: { logs: data } });
+                return res.end(JSON.stringify({ success: true }));
+            }
+
+            if (req.url.startsWith('/api/sessions/') && req.url.endsWith('/event') && req.method === 'POST') {
+                const id = req.url.split('/')[3];
+                const data = await getJsonBody(req);
+                await Session.updateOne({ id }, { $push: { events: data } });
+                return res.end(JSON.stringify({ success: true }));
+            }
+
+            if (req.url.startsWith('/api/sessions/') && req.url.endsWith('/end') && req.method === 'POST') {
+                const id = req.url.split('/')[3];
+                const data = await getJsonBody(req);
+                await Session.updateOne({ id }, {
+                    $set: {
+                        endTime: new Date(data.endTime),
+                        image: data.image
+                    }
+                });
+                return res.end(JSON.stringify({ success: true }));
+            }
+
+            // Admin Endpoints
+            if (req.url === '/api/admin/sessions' && req.method === 'GET') {
+                const sessions = await Session.find().sort({ startTime: -1 }).limit(100);
+                return res.end(JSON.stringify(sessions));
+            }
+
+            if (req.url.startsWith('/api/admin/sessions/') && req.method === 'GET') {
+                const id = req.url.split('/')[4];
+                const session = await Session.findOne({ id });
+                return res.end(JSON.stringify(session));
+            }
+
+            if (req.url === '/api/admin/sessions' && req.method === 'DELETE') {
+                await Session.deleteMany({});
+                return res.end(JSON.stringify({ success: true }));
+            }
+        } catch (e) {
+            fileLog(`[API ERROR] ${e.message}`);
+            res.writeHead(500);
+            return res.end(JSON.stringify({ error: e.message }));
+        }
+    }
+
     // Handle /google-api requests (REST Proxy)
     if (req.url.startsWith('/google-api')) {
         const targetPath = req.url.replace(/^\/google-api/, '');
@@ -142,13 +255,13 @@ server.on('upgrade', (req, socket, head) => {
 
     targetPath = targetPath.replace(/\/+/g, '/');
 
-    // REWRITE: If it's a model-based path, rewrite to the working /ws/ path
-    // Broadened to catch SDK variations that may not include specific method names
-    if (targetPath.includes('models/')) {
+    // REWRITE: If it's a Bidi service call (SDK style), rewrite to the working /ws/ path
+    // But leave model-based paths (/v1alpha/models/...) untouched.
+    if (targetPath.includes('BidiGenerateContent') && !targetPath.includes('models/')) {
         fileLog(`[${timestamp}] [REWRITE] Original Path: ${targetPath}`);
         const urlParams = targetPath.split('?')[1] || '';
-        // Use the official Gemini Live endpoint path
-        targetPath = `/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent${urlParams ? '?' + urlParams : ''}`;
+        const version = targetPath.includes('v1beta') ? 'v1beta' : 'v1alpha';
+        targetPath = `/ws/google.ai.generativelanguage.${version}.GenerativeService.BidiGenerateContent${urlParams ? '?' + urlParams : ''}`;
         fileLog(`[${timestamp}] [REWRITE] New Path: ${targetPath}`);
     }
 

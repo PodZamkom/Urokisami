@@ -41,13 +41,10 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
   const outputTranscriptBuffer = useRef<string>('');
   const statusRef = useRef<string>('initializing');
   const nextStartTimeRef = useRef<number>(0);
-  const gainNodeRef = useRef<GainNode | null>(null);
 
   // State
-  const [logs, setLogs] = useState<string[]>([]);
   const [statusVal, setStatusVal] = useState<string>('initializing');
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [volume, setVolume] = useState<number>(1.0);
 
   // Status Sync Wrapper
   const setStatus = (s: string) => {
@@ -63,8 +60,15 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
     // console.log(`[${ts}] ${msg}`);
   };
 
+  const logEvent = (type: 'action' | 'error', content: string) => {
+    const event = { timestamp: Date.now(), type, content };
+    db.addEvent(initialSession.id, event).catch(e => console.error("Event log failed", e));
+  };
+
   const addLog = (sender: 'user' | 'ai', text: string) => {
-    sessionLogsRef.current.push({ timestamp: Date.now(), sender, text });
+    const entry: ChatLog = { timestamp: Date.now(), sender, text };
+    sessionLogsRef.current.push(entry);
+    db.addLog(initialSession.id, entry).catch(e => console.error("Log sync failed", e));
   };
 
   const cleanup = () => {
@@ -106,16 +110,38 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
 
   useEffect(() => {
     activeRef.current = true;
-    startSession();
 
-    const saveInterval = setInterval(() => {
-      // ... existing save logic ...
-    }, 5000);
+    // Start session on backend
+    const user = db.getPersistedUser();
+    if (user) {
+      db.startSession({
+        id: initialSession.id,
+        username: user.username,
+        contact: user.contact,
+        startTime: initialSession.startTime
+      }).then(() => logEvent('action', 'Session started on backend'))
+        .catch(e => console.error("Session start sync failed", e));
+    }
+
+    startSession();
 
     return () => {
       activeRef.current = false;
-      clearInterval(saveInterval);
       cleanup();
+    };
+  }, []);
+
+  // Unlock audio for mobile
+  useEffect(() => {
+    const unlock = () => {
+      if (outputAudioContextRef.current?.state === 'suspended') outputAudioContextRef.current.resume();
+      if (inputAudioContextRef.current?.state === 'suspended') inputAudioContextRef.current.resume();
+    };
+    window.addEventListener('touchstart', unlock, { once: true });
+    window.addEventListener('click', unlock, { once: true });
+    return () => {
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('click', unlock);
     };
   }, []);
 
@@ -164,11 +190,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
       outputAnalyser.fftSize = 256;
       outputAnalyserRef.current = outputAnalyser;
 
-      const gainNode = outputCtx.createGain();
-      gainNode.gain.value = 1.0; // Default volume (will be updated by state effect if needed, but refs are better here)
-      gainNodeRef.current = gainNode;
-      // Connect: Gain -> Analyser -> Destination
-      gainNode.connect(outputAnalyser);
+      // Connect: Analyser -> Destination
       outputAnalyser.connect(outputCtx.destination);
 
       log("Requesting microphone access...");
@@ -208,7 +230,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
 
       log("Connecting to Gemini Live API...");
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.5-flash-native-audio-latest',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -219,6 +241,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
         callbacks: {
           onopen: async () => {
             log("WebSocket Connection Opened!");
+            logEvent('action', 'Gemini WebSocket opened');
             if (!activeRef.current) return;
             setStatus('connected');
             reconnectAttempts.current = 0;
@@ -265,11 +288,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
               const source = ctx.createBufferSource();
               source.buffer = audioBuffer;
 
-              if (gainNodeRef.current) {
-                source.connect(gainNodeRef.current);
-              } else {
-                source.connect(outputAnalyserRef.current || ctx.destination);
-              }
+              source.connect(outputAnalyserRef.current || ctx.destination);
 
               source.start(nextStartTimeRef.current);
               nextStartTimeRef.current += audioBuffer.duration;
@@ -287,6 +306,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
           },
           onclose: (event) => {
             log(`WS Closed. Code: ${event.code}, Reason: ${event.reason}`);
+            logEvent('action', `Gemini WebSocket closed (Code: ${event.code})`);
             console.log("WS Close:", event);
             if (!activeRef.current) return;
             // REMOVE cleanup() from here to avoid killing the retry logic's audio context if reusing?
@@ -306,6 +326,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
           },
           onerror: (err) => {
             log(`WS Error: ${err.message || err}`);
+            logEvent('error', `WebSocket Error: ${err.message || 'Unknown'}`);
             console.error("Live error:", err);
             if (!activeRef.current) return;
             cleanup();
@@ -326,10 +347,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
 
   return (
     <div className="flex flex-col h-full bg-white animate-fade-in relative">
-      {/* DEBUG OVERLAY */}
-      <div className="absolute top-0 left-0 w-full h-32 bg-black/80 text-green-400 text-[10px] p-2 overflow-y-auto z-50 pointer-events-none opacity-80 font-mono">
-        {logs.map((l, i) => <div key={i}>{l}</div>)}
-      </div>
+
 
       <div className="flex-none h-[25vh] bg-gray-100 relative border-b border-gray-100 shadow-sm overflow-hidden">
         {/* ... existing header ... */}
@@ -396,29 +414,7 @@ export function TutorSession({ initialSession, onBack }: TutorSessionProps) {
         )}
       </div>
 
-      <div className="flex-none p-10 pb-20 bg-white border-t border-gray-50 text-center space-y-6">
-        <div className="max-w-xs mx-auto w-full px-4 flex items-center gap-4">
-          {/* Volume Controls */}
-          <span className="text-xl">🔈</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={volume}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setVolume(v);
-              if (gainNodeRef.current) {
-                gainNodeRef.current.gain.value = v;
-                // Smooth transition could be added: .setTargetAtTime(v, ctx.currentTime, 0.1)
-              }
-            }}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-          />
-          <span className="text-xl">🔊</span>
-        </div>
-
+      <div className="flex-none p-10 pb-20 bg-white border-t border-gray-50 text-center">
         <button onClick={handleEndSession} className="group flex flex-col items-center mx-auto space-y-2">
           <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 group-hover:bg-red-50 group-hover:text-red-500 transition-all">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

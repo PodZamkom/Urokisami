@@ -11,12 +11,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
 
   useEffect(() => {
-    const data = db.getSessions();
-    setSessions(data.sort((a, b) => b.startTime - a.startTime));
+    const loadData = async () => {
+      const data = await db.getSessions();
+      setSessions(data.sort((a, b) => b.startTime - a.startTime));
+    };
+    loadData();
   }, []);
 
   const formatDate = (ts: number) => new Date(ts).toLocaleString('ru-RU');
-  
+
   const getDuration = (s: SessionRecord) => {
     if (!s.endTime) return 'Не завершено';
     const diff = Math.floor((s.endTime - s.startTime) / 1000);
@@ -25,9 +28,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     return `${m}м ${sec}с`;
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (window.confirm("Вы уверены, что хотите удалить ВСЮ историю сессий?")) {
-      db.clearSessions();
+      await db.clearSessions();
       setSessions([]);
       setSelectedSession(null);
     }
@@ -55,7 +58,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             </div>
           )}
           {sessions.map(session => (
-            <div 
+            <div
               key={session.id}
               onClick={() => setSelectedSession(session)}
               className={`p-5 border-b cursor-pointer transition-all hover:bg-gray-50 ${selectedSession?.id === session.id ? 'bg-indigo-50/50 border-r-4 border-r-indigo-600' : ''}`}
@@ -66,7 +69,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               </div>
               <div className="text-[10px] text-gray-400 font-bold mb-2">{session.contact || 'Без контакта'}</div>
               <div className="text-[11px] text-gray-500 line-clamp-2 italic leading-relaxed">
-                 {session.logs.find(l => l.sender === 'user')?.text || 'Аудио-сессия без транскрипции'}
+                {session.logs.find(l => l.sender === 'user')?.text || 'Аудио-сессия без транскрипции'}
               </div>
             </div>
           ))}
@@ -77,12 +80,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
               <div className="bg-white rounded-[2rem] shadow-sm p-8 flex items-start justify-between border border-gray-100">
                 <div className="space-y-1">
-                   <h3 className="text-3xl font-black text-gray-900 tracking-tighter">{selectedSession.username}</h3>
-                   <div className="flex items-center gap-3">
+                  <h3 className="text-3xl font-black text-gray-900 tracking-tighter">{selectedSession.username}</h3>
+                  <div className="flex items-center gap-3">
                     <span className="text-sm font-bold text-indigo-600">{selectedSession.contact}</span>
                     <span className="text-gray-300">•</span>
                     <span className="text-sm font-medium text-gray-400">{formatDate(selectedSession.startTime)}</span>
-                   </div>
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-1">Время в уроке</div>
@@ -100,35 +103,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               )}
 
               <div className="bg-white rounded-[2rem] shadow-sm p-8 border border-gray-100">
-                 <h4 className="font-black text-gray-900 uppercase text-[10px] tracking-[0.2em] mb-8">Стенограмма диалога</h4>
-                 <div className="space-y-8">
-                    {selectedSession.logs.map((log, idx) => (
-                      <div key={idx} className={`flex flex-col ${log.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                         <div className={`px-6 py-4 rounded-[1.5rem] max-w-[80%] shadow-sm text-sm font-medium leading-relaxed ${
-                           log.sender === 'user' 
-                             ? 'bg-indigo-600 text-white rounded-tr-none' 
-                             : 'bg-white text-gray-800 rounded-tl-none border-2 border-indigo-50'
-                         }`}>
-                           {log.text}
-                         </div>
-                         <div className="flex items-center gap-2 mt-2 px-2">
-                           <span className={`text-[9px] font-black uppercase tracking-wider ${log.sender === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>
-                             {log.sender === 'user' ? 'Ученик' : 'Учитель (AI)'}
-                           </span>
-                           <span className="text-gray-200">•</span>
-                           <span className="text-[9px] text-gray-400 font-bold tabular-nums">
-                             {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                           </span>
-                         </div>
+                <h4 className="font-black text-gray-900 uppercase text-[10px] tracking-[0.2em] mb-8">Стенограмма диалога</h4>
+                <div className="space-y-8">
+                  {selectedSession.logs.map((log, idx) => (
+                    <div key={idx} className={`flex flex-col ${log.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                      <div className={`px-6 py-4 rounded-[1.5rem] max-w-[80%] shadow-sm text-sm font-medium leading-relaxed ${log.sender === 'user'
+                        ? 'bg-indigo-600 text-white rounded-tr-none'
+                        : 'bg-white text-gray-800 rounded-tl-none border-2 border-indigo-50'
+                        }`}>
+                        {log.text}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2 px-2">
+                        <span className={`text-[9px] font-black uppercase tracking-wider ${log.sender === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>
+                          {log.sender === 'user' ? 'Ученик' : 'Учитель (AI)'}
+                        </span>
+                        <span className="text-gray-200">•</span>
+                        <span className="text-[9px] text-gray-400 font-bold tabular-nums">
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedSession.logs.length === 0 && (
+                    <div className="text-center py-20 border-4 border-dashed border-gray-50 rounded-[2rem]">
+                      <p className="text-gray-300 font-bold italic">Логи пусты</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {selectedSession.events && selectedSession.events.length > 0 && (
+                <div className="bg-white rounded-[2rem] shadow-sm p-8 border border-gray-100">
+                  <h4 className="font-black text-gray-900 uppercase text-[10px] tracking-[0.2em] mb-8 text-red-500">События и ошибки</h4>
+                  <div className="space-y-4">
+                    {selectedSession.events.map((event, idx) => (
+                      <div key={idx} className={`p-4 rounded-xl border-l-4 ${event.type === 'error' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-blue-50 border-blue-500 text-blue-700'}`}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider">{event.type}</span>
+                          <span className="text-[9px] font-bold opacity-50">{new Date(event.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <div className="text-sm font-medium">{event.content}</div>
                       </div>
                     ))}
-                    {selectedSession.logs.length === 0 && (
-                      <div className="text-center py-20 border-4 border-dashed border-gray-50 rounded-[2rem]">
-                        <p className="text-gray-300 font-bold italic">Логи пусты</p>
-                      </div>
-                    )}
-                 </div>
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center opacity-20">

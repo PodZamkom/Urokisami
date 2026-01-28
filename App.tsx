@@ -74,25 +74,22 @@ export default function App() {
 
   const handleCapture = (base64Image: string) => {
     const session: ActiveSession = {
+      id: crypto.randomUUID(),
       image: base64Image,
       startTime: Date.now(),
-      logs: []
+      logs: [],
+      events: []
     };
     setActiveSession(session);
     db.setActiveSession(session);
     setAppState(AppState.TUTOR);
   };
 
-  const handleEndTutorSession = (logs: ChatLog[]) => {
+  const handleEndTutorSession = async (logs: ChatLog[]) => {
     if (currentUser && activeSession) {
-      db.saveSession({
-        id: crypto.randomUUID(),
-        username: currentUser.username,
-        contact: currentUser.contact,
-        startTime: activeSession.startTime,
+      await db.endSession(activeSession.id, {
         endTime: Date.now(),
-        image: activeSession.image,
-        logs: logs
+        image: activeSession.image
       });
     }
     setActiveSession(null);
@@ -191,7 +188,7 @@ export default function App() {
         )}
       </main>
       <footer className="flex-none py-4 text-center text-[10px] font-bold text-gray-300 uppercase tracking-widest">
-        v1.23.0
+        v1.27.0
       </footer>
     </div>
   );

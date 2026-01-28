@@ -14,10 +14,25 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - PROXY_URL=${PROXY_URL}
+      - MONGODB_URI=${MONGODB_URI}
       - NODE_ENV=production
+    depends_on:
+      - mongodb
+    networks:
+      - urokisami_network
+
+  mongodb:
+    image: mongo:latest
+    container_name: urokisami_db
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
     networks:
       - urokisami_network
 
 networks:
   urokisami_network:
     driver: bridge
+
+volumes:
+  mongo_data:

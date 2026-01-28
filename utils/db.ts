@@ -1,11 +1,9 @@
-import { SessionRecord, User, ActiveSession } from '../types';
+import { SessionRecord, User, ActiveSession, ChatLog, SessionEvent } from '../types';
 
-const STORAGE_KEY = 'urokisami_sessions_v2';
-const ACTIVE_SESSION_KEY = 'urokisami_active_session_v2';
 const USER_KEY = 'urokisami_auth_user_v2';
+const ACTIVE_SESSION_KEY = 'urokisami_active_session_v3';
 
 export const db = {
-  // Теперь просто возвращает объект пользователя без проверки пароля
   login: (username: string, contact: string): User => {
     const role = (username.toLowerCase() === 'admin' || username.toLowerCase() === 'админ') ? 'admin' : 'student';
     return { username, contact, role };
@@ -24,19 +22,50 @@ export const db = {
     localStorage.removeItem(USER_KEY);
   },
 
-  saveSession: (session: SessionRecord) => {
-    try {
-      const existing = localStorage.getItem(STORAGE_KEY);
-      const sessions: SessionRecord[] = existing ? JSON.parse(existing) : [];
-      sessions.push(session);
-      const trimmedSessions = sessions.slice(-100); 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedSessions));
-      localStorage.removeItem(ACTIVE_SESSION_KEY);
-    } catch (e) {
-      console.error("Storage error:", e);
-    }
+  // NEW: Backend API calls
+  startSession: async (session: { id: string, username: string, contact: string, startTime: number }) => {
+    await fetch('/api/sessions/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(session)
+    });
   },
 
+  addLog: async (sessionId: string, log: ChatLog) => {
+    await fetch(`/api/sessions/${sessionId}/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(log)
+    });
+  },
+
+  addEvent: async (sessionId: string, event: SessionEvent) => {
+    await fetch(`/api/sessions/${sessionId}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event)
+    });
+  },
+
+  endSession: async (sessionId: string, data: { endTime: number, image: string }) => {
+    await fetch(`/api/sessions/${sessionId}/end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
+  },
+
+  getSessions: async (): Promise<SessionRecord[]> => {
+    const res = await fetch('/api/admin/sessions');
+    return await res.json();
+  },
+
+  clearSessions: async () => {
+    await fetch('/api/admin/sessions', { method: 'DELETE' });
+  },
+
+  // Local active session management (still useful for UI state if refreshed)
   setActiveSession: (session: ActiveSession) => {
     localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session));
   },
@@ -49,18 +78,4 @@ export const db = {
   clearActiveSession: () => {
     localStorage.removeItem(ACTIVE_SESSION_KEY);
   },
-
-  getSessions: (): SessionRecord[] => {
-    try {
-      const existing = localStorage.getItem(STORAGE_KEY);
-      const data: SessionRecord[] = existing ? JSON.parse(existing) : [];
-      return data;
-    } catch (e) {
-      return [];
-    }
-  },
-
-  clearSessions: () => {
-    localStorage.removeItem(STORAGE_KEY);
-  }
 };
